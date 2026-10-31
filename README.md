@@ -7,6 +7,30 @@ sends it to the server, and the final prediction is the strict-majority vote
 (`n//2 + 1`) of all hypotheses. Communication uses [Flower](https://flower.ai):
 one fit round and one evaluate round.
 
+> **Relation to the published paper.** FILP (Federated Inductive Logic
+> Programming) was introduced in
+> [*Federated Inductive Logic Programming for Explainable Artificial Intelligence*](https://ceur-ws.org/Vol-4059/paper1.pdf) (Akaichi, Jacquet, Linden and Vanhoof, EXPLIMED @ ECAI 2025). This repository goes beyond the
+> published version: it adds Learning by Consensus with two local ILP systems
+> (Popper v4 and Andante), IID and non-IID partitions, a centralized baseline
+> evaluated on the same train/test split, and a per-client report (accuracy,
+> MCC, hypothesis size, learning time, communication cost, vote of every
+> client on every test example). Results obtained with this code may therefore
+> differ from, or complement, those reported in the paper.
+
+## Citation
+
+If you use this code, please cite the paper:
+
+```bibtex
+@inproceedings{akaichi2025filp,
+  title     = {Federated Inductive Logic Programming for Explainable Artificial Intelligence},
+  author    = {Akaichi, Yasmine and Jacquet, Jean-Marie and Linden, Isabelle and Vanhoof, Wim},
+  booktitle = {EXPLIMED @ ECAI 2025},
+  year      = {2025},
+  url       = {https://ceur-ws.org/Vol-4059/paper1.pdf}
+}
+```
+
 ## Install
 
 ```bash
@@ -14,9 +38,12 @@ cd learning-by-consensus
 pip install -r requirements.txt
 ```
 
-The modified **Popper v4** and **Andante** used in the paper are bundled in
+The modified **Popper v4** and **Andante** used in this work are bundled in
 `filp_consensus/learners/popper-v4` and `filp_consensus/learners/andante-ilp`
-(see their `LICENSE` files); nothing else to clone. Popper needs
+(see their `LICENSE` files); nothing else to clone. The original Popper is
+available at [logic-and-learning-lab/Popper](https://github.com/logic-and-learning-lab/Popper);
+the bundled copy contains small modifications needed by this code (for
+example, it no longer depends on `pkg_resources`). Popper needs
 [SWI-Prolog](https://www.swi-prolog.org) installed on the machine.
 To use other copies, set `FILP_POPPER_PATH` / `FILP_ANDANTE_PATH`.
 
