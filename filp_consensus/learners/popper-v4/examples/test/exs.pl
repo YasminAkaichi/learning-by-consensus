@@ -1,0 +1,11 @@
+pos(complication(patient73)).
+pos(complication(patient21)).
+pos(complication(patient37)).
+pos(complication(patient70)).
+pos(complication(patient9)).
+pos(complication(patient23)).
+pos(complication(patient18)).
+neg(complication(patient44)).
+neg(complication(patient1)).
+neg(complication(patient114)).
+neg(complication(patient97)).

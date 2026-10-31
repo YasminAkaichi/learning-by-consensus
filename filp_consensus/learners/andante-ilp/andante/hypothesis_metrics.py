@@ -1,0 +1,218 @@
+"""
+Define the metrics for generating and evaluating candidate clauses in the
+build_hypothesis method of the andante.learner.ProgolLearner class.
+
+License
+-------
+
+This software is distributed under the terms of both the MIT license and the
+Apache License (Version 2.0).
+
+See LICENSE for details.
+
+Acknowlegment
+-------------
+
+This software has benefited from the support of Wallonia thanks to the funding
+of the ARIAC project (https://trail.ac), a project part of the
+DigitalWallonia4.ai initiative (https://www.digitalwallonia.be).
+
+It was done by Simon Jacquet at the University of Namur (https://www.unamur.be)
+in the period of October 1st 2021 to August 31st 2022 under the supervision of
+Isabelle Linden, Jean-Marie Jacquet and Wim Vanhoof. 
+"""
+
+from abc import ABC
+from andante.logic_concepts import Clause, Type, extract_variables
+from andante.knowledge import MultipleKnowledge, TreeShapedKnowledge
+from andante.substitution import Substitution
+
+class HypothesisMetric(ABC):
+    """ Abstract class for all hypothesis metrics.
+
+    Defines all methods that a hypothesis metric must implement.
+    """
+    def State(self, *args, **kwargs):
+        """ Return a state object for a candidate clause """
+        pass
+    
+    def best(self, collec):
+        """ Returns the best state among a collection of states (collec) """
+        pass
+    
+    def prune(self, state):
+        """ Tells whether state needs to be pruned """
+        pass
+    
+    def terminated(self, Closed, Open):
+        """ Tells whether the search for the best state is to be terminated """
+        pass
+    
+    def rho(self, state):
+        """ Generates all children states for a parent state """
+        pass            
+    
+class FnMetric(HypothesisMetric):
+    """ Metric using positive and negative examples to find the best hypothesis
+
+    Attributes
+    ----------
+    B: andante.knowledge.Knowledge
+        The background knowledge
+    E: dict
+        Set of examples
+    bottom: andante.logic_concepts.Clause
+        The bottom clause
+    solver: andante.solver.Solver
+        The deduction engine
+    options: andante.options.Options
+        All options
+    subst: andante.substitution.Substitution
+        Defines the domain of variables
+    d: dict (andante.logic_concepts.Variable -> int)
+        Dict giving for each variable in the scope of subst, its distance as
+        defined by S. Muggleton in 'Inverse entailment and progol.' 1995
+        available at
+        http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.31.1630&rep=rep1&type=pdf
+    """
+    def __init__(self, B, E, M, bottom, solver, options):
+        self.B = B
+        self.E = E
+        self.M = M
+        self.bottom = bottom
+        self.solver = solver
+        self.options = options
+
+        self.subst  = Substitution()
+        self.subst.add_variables(self.bottom)
+        
+        self.build_d()
+        
+    def build_d(self):
+
+        self.d = dict()
+                
+        # var (-type) -> list of var (+type) 
+        graph = {v:set() for v in self.subst}
+        
+        # build graph  
+        for atom in self.bottom.body:
+            type_subst = self.subst.get_type_subst(atom, self.M, body_atom=True)
+            minus_type = [key for key, value in type_subst.subst.items() if isinstance(value,Type) and value.sign=='-']
+            plus__type = [key for key, value in type_subst.subst.items() if isinstance(value,Type) and value.sign=='+']
+            for v in minus_type:
+                graph[v].update(plus__type)
+        type_subst = self.subst.get_type_subst(self.bottom.head, self.M, body_atom=False)
+        
+        l0 = [key for key, value in type_subst.subst.items() if isinstance(value,Type) and value.sign=='-']
+        self.InVars = set(key for key, value in type_subst.subst.items() if isinstance(value,Type) and value.sign=='+')
+        
+        l = [l0]
+        for i, li in enumerate(l):
+            lnext = list()
+            for v in li:
+                self.d[v]=i
+                lnext.extend(v_ for v_ in graph[v] if v_ not in self.d)
+            if lnext:
+                l.append(lnext)
+        for var in self.subst:
+            if var not in self.d:
+                self.d[var] = len(l)
+                
+    def d_of_clause(self, clause):
+        vars_in_head = extract_variables(clause.head)
+        vars_in_body = extract_variables(clause.body)
+        vars_of_interest = {var for var in vars_in_head if self.d[var]!=0} | vars_in_body
+        d_ = min(self.d[var] for var in vars_of_interest)
+        return d_
+                
+    def State(self, *args, **kwargs):
+        return self._State(self, *args, **kwargs)
+    
+    class _State:
+        def __init__(self, hm, clause, k=0, E=None):
+            """
+            Represents a single state in the search for the best hypothesis
+            hm: the metric used to compare hypotheses
+            clause: the hypothesis at hand
+            B: the knowledge composed from hm.B and clause
+            k: position in the bottom clause
+            E: the positive and negative examples
+            E_cov: the examples covered
+            
+            The metrics are as follow:
+            p: the number of positive examples covered by B
+            n: the number of negative examples covered by B
+            c: the number of atom in the body of clause
+            h: an optimistic guess to the number of atoms still needed in the clause 
+            g: p-c-h
+            f: g-n = p-(c+h+n)
+            """
+            self.hm = hm            
+            self.clause = clause
+            self.B = MultipleKnowledge(hm.B, TreeShapedKnowledge([clause],options=hm.options))
+            self.k = k
+            self.E = E if E is not None else hm.E
+            self.E_cov = {label:[e for e in self.E[label] if hm.solver.succeeds_on(e.head, self.B, verbose=0)] for label in self.E}
+            
+            self.InVars = extract_variables(self.clause.body) | self.hm.InVars
+            self.str_id = '%s %d' % (str(self.clause), self.k)
+
+            # Metrics for the state
+            # - c: the number of atoms in the body of C
+            self.p = len(self.E_cov['pos'])
+            self.n = len(self.E_cov['neg'])
+            self.c = len(self.clause.body)
+            self.h = hm.d_of_clause(self.clause)
+            if self.n > 0:
+                self.h = max(1, self.h)
+            self.g = self.p - self.c - self.h
+            self.f = self.g - self.n
+            
+            self.metrics = (self.p,self.n,self.c,self.h,self.g,self.f)
+            
+        def metrics_info(self): return "[  p,  n,  c,  h,  g,  f]"
+        def copy(self): return self.hm.State(self.clause.copy(), self.k, self.E_cov)
+        def __repr__(self): return self.str_id
+        def __str__(self): 
+            s = '[%3d,%3d,%3d,%3d,%3d,%3d]' % self.metrics
+            return '%s %s' % (s, str(self.clause))
+        def __hash__(self): return hash(self.str_id)
+        def __eq__(self, other): return self.str_id==other.str_id
+
+    def best(self, collec, key=lambda s: (s.f, -s.n)):
+        # Tie-break on f by preferring FEWER covered negatives (lower n),
+        # not more. The original `(s.f, s.n)` key made max() pick the
+        # candidate with the *most* false positives among equal-f ties,
+        # which is backwards for a metric meant to avoid false positives.
+        return max([s for s in collec if s.c<=self.options.c], key=key)
+
+    def prune(self, state):
+        if (state.n==0 and state.f>0) or state.g<0 or state.c>self.options.c:
+            return True
+        else: return False
+
+    def terminated(self, Closed, Open):
+        s = self.best(Closed)
+        if len(Open)==0:
+            return True
+        elif s.n==0 and s.f>0 and s.f>=self.best(Open, key=lambda s: s.g).g:
+            return True
+        else: return False
+
+                    
+    def rho(self, state):
+        # Added line, not in the paper
+        if state.k>=len(self.bottom.body) or state.c==self.options.c:
+            return
+        
+        yield self.State(state.clause, state.k+1, E=state.E_cov)
+        
+        atom_k = self.bottom.body[state.k]
+        type_subst = self.subst.get_type_subst(atom_k, self.M, body_atom=True)
+        in_vars = [key for key, value in type_subst.subst.items() if isinstance(value,Type) and value.sign=='+']
+        if all(var in state.InVars for var in in_vars):                
+            c = Clause(state.clause.head, state.clause.body+[atom_k])
+            s = self.State(c, state.k+1, E=state.E_cov)
+            yield s 
+                    
