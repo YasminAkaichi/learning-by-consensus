@@ -47,6 +47,30 @@ example, it no longer depends on `pkg_resources`). Popper needs
 [SWI-Prolog](https://www.swi-prolog.org) installed on the machine.
 To use other copies, set `FILP_POPPER_PATH` / `FILP_ANDANTE_PATH`.
 
+## Docker (easiest way to try it)
+
+Nothing to install except [Docker](https://www.docker.com): SWI-Prolog, Python,
+Flower, Popper and Andante are all inside the image. The default demo
+(`docker run --rm learning-by-consensus`) has been tested.
+
+```bash
+docker build -t learning-by-consensus .
+
+# default demo: Zendo1, Popper, 3 clients, IID
+docker run --rm learning-by-consensus
+
+# any other run: the arguments are those of `python -m filp_consensus`
+docker run --rm -v "$PWD/results:/app/results" learning-by-consensus \
+       run --dataset trains1000 --learner andante --clients 5 --partition non_iid --show-predictions
+
+# your own dataset (a folder with bias.pl, bk.pl, exs.pl)
+docker run --rm -v "$PWD/mydata:/data" -v "$PWD/results:/app/results" \
+       learning-by-consensus run --dataset /data --clients 3
+```
+
+With `-v "$PWD/results:/app/results"` the results (JSON files, `predictions.csv`)
+are kept on your machine.
+
 ## Quick start
 
 ```bash
