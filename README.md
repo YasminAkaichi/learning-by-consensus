@@ -120,6 +120,61 @@ dataset (`bias.pl`, `bk.pl`, `exs.pl`). The number of clients, the partition
 (`iid` / `non_iid`), the learner (`popper` / `andante`) and the seed can be
 changed the same way.
 
+## Example: the vote under label skew (non-IID, 10 clients)
+
+```bash
+python -m filp_consensus run --dataset trains1000 --learner popper --clients 10 --partition non_iid
+```
+
+Output (Trains1000, Popper, 10 clients, non-IID, seed 42; the results are written
+to `results/trains1000_popper_k10_non_iid_seed42/`):
+
+```
+=== trains1000_popper_k10_non_iid_seed42 ===
+Client rules  lits  time(s)  up(KB)    acc   prec    rec     F1    MCC
+----------------------------------------------------------------------
+     1     1   3.0     0.38    0.26  0.885  1.000  0.709  0.830  0.772
+    10     1   4.0     0.44    0.28  0.910  0.814  1.000  0.898  0.833
+     2     1   5.0     0.64    0.29  1.000  1.000  1.000  1.000  1.000
+     3     1   5.0     0.72    0.29  1.000  1.000  1.000  1.000  1.000
+     4     1   5.0     0.73    0.29  1.000  1.000  1.000  1.000  1.000
+     5     1   5.0     0.65    0.29  1.000  1.000  1.000  1.000  1.000
+     6     1   5.0     0.76    0.29  1.000  1.000  1.000  1.000  1.000
+     7     1   5.0     0.61    0.29  1.000  1.000  1.000  1.000  1.000
+     8     1   5.0     0.58    0.29  1.000  1.000  1.000  1.000  1.000
+     9     1   5.0     0.62    0.29  1.000  1.000  1.000  1.000  1.000
+----------------------------------------------------------------------
+  VOTE                               1.000  1.000  1.000  1.000  1.000   (tp=79 fp=0 tn=121 fn=0)
+
+Hypotheses:
+  client 1: f(V0):- roof_closed(V1),three_wheels(V1),has_car(V0,V1).
+  client 10: f(V0):- has_car(V0,V1),roof_closed(V2),has_car(V0,V2),three_wheels(V1).
+  client 2: f(V0):- long(V1),has_car(V0,V2),roof_closed(V1),three_wheels(V2),has_car(V0,V1).
+  client 3: f(V0):- long(V1),three_wheels(V2),has_car(V0,V1),roof_closed(V1),has_car(V0,V2).
+  ...                                    (clients 4 to 9: the same rule as client 3,
+                                          with the literals in another order)
+
+Predictions per example: results/trains1000_popper_k10_non_iid_seed42/consensus/predictions.csv
+```
+
+With `non_iid` the label skew is strong when there are many clients: client 1 gets
+only 6 positive and 88 negative training examples, client 10 gets 57 positive and
+9 negative ones. Their local hypotheses are wrong in opposite ways:
+
+- **client 1** (few positives) learns a rule that is too *specific*: one car that
+  is both closed-roof and three-wheeled, without `long`. It misses positives
+  (recall 0.709).
+- **client 10** (few negatives) learns a rule that is too *general*: no negative
+  example forces the `long` literal, so it accepts false positives (precision 0.814).
+- **clients 2 to 9** find the exact rule (a long closed-roof car and a
+  three-wheeled car), written with the literals in different orders.
+
+A strict majority needs 6 votes out of 10. Eight clients are right and the two
+errors are of opposite kinds, so the vote cancels them: the consensus reaches
+accuracy 1.000 although the worst client alone has 0.885. This is one run (one
+seed) meant to illustrate the mechanism; on this noise-free synthetic dataset the
+vote is not needed with IID partitions, where all clients find the same rule.
+
 ## Other commands
 
 ```bash
